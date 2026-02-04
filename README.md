@@ -20,7 +20,7 @@ YOUR OS IS COMPROMISED - DO NOT TRUST HARDWARE-PRIMITIVE CRYPTOGRAPHY
 
 ---
 
-## 🛡️ THE SECURITY ARCHITECTURE
+## SECURITY ARCHITECTURE
 
 Hyperion is not just "secure." It is **hostile** to attackers.
 
@@ -54,7 +54,7 @@ When you close Hyperion, we don't just `free()` memory. We use `secure_wipe()` t
 
 ---
 
-## 🛠️ COMPILATION
+## COMPILATION
 
 Hyperion is written in **Pure C (C99)**. Zero external libraries. No `npm install`. No `pip`. No bloated dependencies.
 
