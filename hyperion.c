@@ -1,3 +1,10 @@
+/* PROJECT HYPERION v5.1: OBSIDIAN MONOLITH
+   - Visual Progress Bars for KDF
+   - High-Precision Nanosecond Entropy Mixing
+   - Real-time Unbuffered UI Feedback
+   - Titan-KDF (64MB)
+*/
+
 #define _GNU_SOURCE
 
 #include <stdio.h>
@@ -7,7 +14,7 @@
 #include <time.h>
 #include <ctype.h>
 
-//platform specific setup
+// --- PLATFORM SPECIFIC SETUP ---
 #if defined(_WIN32) || defined(_WIN64)
     #include <windows.h>
     #include <conio.h>
@@ -66,7 +73,7 @@
     }
 #endif
 
-//constants
+// --- CONSTANTS ---
 #define TITAN_MEM_SIZE (64 * 1024 * 1024) // 64MB Grid
 #define TITAN_PASSES 3
 #define KEY_LEN 32
@@ -77,7 +84,7 @@
 #define KEY_ENTER 13
 #define KEY_ESC 27
 
-//colrs
+// --- COLORS ---
 #define C_RESET   "\033[0m"
 #define C_RED     "\033[38;5;196m"
 #define C_GREEN   "\033[38;5;46m"
@@ -87,7 +94,7 @@
 #define C_BOLD    "\033[1m"
 #define C_BORDER  "\033[38;5;239m"
 
-//mmemory
+// --- MEMORY ---
 void secure_wipe(void *ptr, size_t len) {
     if (ptr == NULL) return;
     volatile uint8_t *p = (volatile uint8_t *)ptr;
@@ -96,7 +103,7 @@ void secure_wipe(void *ptr, size_t len) {
 
 void flush_input() { while(_kbhit()) _getch(); }
 
-/ui helpers
+// --- UI HELPERS ---
 void print_progress(const char* label, size_t current, size_t total) {
     int width = 30;
     float ratio = (float)current / (float)total;
@@ -111,7 +118,7 @@ void print_progress(const char* label, size_t current, size_t total) {
     fflush(stdout); // Force update immediately
 }
 
-//crypto primitives
+// --- CRYPTO PRIMITIVES ---
 static inline uint32_t rotl32(uint32_t x, int n) { return (x << n) | (x >> (32 - n)); }
 
 #define QR(a, b, c, d) a+=b; d^=a; d=rotl32(d,16); c+=d; b^=c; b=rotl32(b,12); a+=b; d^=a; d=rotl32(d,8); c+=d; b^=c; b=rotl32(b,7);
@@ -130,7 +137,7 @@ void chacha_block(uint32_t *state, uint8_t *stream) {
     }
 }
 
-//CSPRNG
+// --- CSPRNG ---
 typedef struct {
     uint32_t state[16];
     uint8_t buffer[64];
@@ -162,7 +169,7 @@ void rng_bytes(uint8_t *out, size_t len) {
     for(size_t i=0; i<len; i++) out[i] = rng_byte();
 }
 
-//encryption layers
+// --- ENCRYPTION LAYERS ---
 void hchacha20(const uint8_t *key, const uint8_t *nonce, uint8_t *out) {
     uint32_t s[16] = {0x61707865,0x3320646e,0x79622d32,0x6b206574};
     for(int i=0;i<8;i++) s[4+i] = ((uint32_t*)key)[i];
@@ -198,7 +205,7 @@ void poly1305_mac(const uint8_t *msg, size_t len, const uint8_t *key, uint8_t *t
     memcpy(tag, h, 16); secure_wipe(h, 32);
 }
 
-//TITANKDF
+// --- TITAN KDF (With Visuals) ---
 void titan_kdf(const char *pass, const uint8_t *salt, uint8_t *out_key) {
     printf("\n");
     
@@ -261,7 +268,7 @@ void titan_kdf(const char *pass, const uint8_t *salt, uint8_t *out_key) {
     free(memory);
 }
 
-//DATA
+// --- DATA ---
 typedef struct {
     char site[64];
     char user[64];
@@ -323,7 +330,7 @@ void get_safe_string(char *buffer, int max_len) {
     buffer[i] = 0; printf("\n");
 }
 
-//IO handling
+// --- IO ---
 void save_vault(const char *pass) {
     FILE *fp = fopen(vault_path, "wb");
     if(!fp) return;
@@ -390,7 +397,7 @@ int load_vault(const char *pass) {
     return 1;
 }
 
-//we love TUIs
+// --- TUI ---
 void draw_box(int w) { printf(C_BORDER "+"); for(int i=0;i<w;i++) printf("-"); printf("+" C_RESET "\n"); }
 
 void tui_header() {

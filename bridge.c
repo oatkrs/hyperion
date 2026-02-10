@@ -27,6 +27,7 @@
     uint64_t get_high_res_time() {
         LARGE_INTEGER t; QueryPerformanceCounter(&t); return t.QuadPart;
     }
+    int _getch(void) { return _getch(); } // Utilize conio's getch
 #else
     #include <unistd.h>
     #include <termios.h>
@@ -66,7 +67,7 @@
 #define C_RED     "\033[38;5;196m"
 #define C_BOLD    "\033[1m"
 
-// --- CRYPTO ENGINE (IDENTICAL TO HYPERION v5) ---
+// --- CRYPTO ENGINE ---
 static inline uint32_t rotl32(uint32_t x, int n) { return (x << n) | (x >> (32 - n)); }
 #define QR(a, b, c, d) a+=b; d^=a; d=rotl32(d,16); c+=d; b^=c; b=rotl32(b,12); a+=b; d^=a; d=rotl32(d,8); c+=d; b^=c; b=rotl32(b,7);
 
@@ -92,10 +93,15 @@ void chacha_block(uint32_t *state, uint8_t *stream) {
 // Simple CSPRNG for salt/nonce generation
 void get_random_bytes(uint8_t *out, size_t len) {
     uint32_t state[16] = {0x61707865, 0x3320646e, 0x79622d32, 0x6b206574, 0,0,0,0, 0,0,0,0, 0,0,0,0};
-    // Seed with time + uninitialized stack junk (better than nothing for tool)
+    
+    // Seed with time 
     uint64_t t = get_high_res_time();
     state[4] = (uint32_t)t; state[5] = (uint32_t)(t >> 32);
-    state[6] = (uint32_t)&out; // stack address entropy
+    
+    // FIX: Properly cast 64-bit pointer to two 32-bit integers to avoid warning & capture full address entropy
+    uintptr_t stack_addr = (uintptr_t)&out;
+    state[6] = (uint32_t)stack_addr; 
+    state[7] = (uint32_t)(stack_addr >> 32);
     
     uint8_t block[64];
     size_t generated = 0;
@@ -198,7 +204,6 @@ typedef struct {
     char pass[128];
 } Entry;
 
-// Finds the index of a column header (-1 if not found)
 int get_col_index(char **headers, int count, const char *target) {
     for (int i=0; i<count; i++) {
         if (strcasecmp(headers[i], target) == 0) return i;
@@ -206,8 +211,6 @@ int get_col_index(char **headers, int count, const char *target) {
     return -1;
 }
 
-// Robust CSV Line Parser (Handles quotes and commas inside quotes)
-// Returns array of pointers to fields (modifies input string)
 int parse_csv_line(char *line, char **fields, int max_fields) {
     int field_count = 0;
     char *ptr = line;
@@ -218,33 +221,27 @@ int parse_csv_line(char *line, char **fields, int max_fields) {
     while (*ptr && field_count < max_fields) {
         if (*ptr == '"') {
             in_quote = !in_quote;
-            // Clean quotes later or handle here? 
-            // Simplified: we will strip quotes in post-processing
         } else if (*ptr == ',' && !in_quote) {
-            *ptr = '\0'; // Terminate current field
-            fields[field_count++] = ptr + 1; // Start next field
+            *ptr = '\0'; 
+            fields[field_count++] = ptr + 1; 
         }
         ptr++;
     }
     return field_count;
 }
 
-// Removes surrounding quotes and unescapes double quotes
 void clean_csv_field(char *dest, const char *src, int max_len) {
     int len = strlen(src);
     if (len == 0) { dest[0] = 0; return; }
     
     int s = 0, d = 0;
-    // Strip surrounding quotes
     if (src[0] == '"' && src[len-1] == '"') {
-        s = 1;
-        len--; 
+        s = 1; len--; 
     }
     
     while (s < len && d < max_len - 1) {
         if (src[s] == '"' && src[s+1] == '"') {
-            dest[d++] = '"'; // Unescape "" -> "
-            s += 2;
+            dest[d++] = '"'; s += 2;
         } else {
             dest[d++] = src[s++];
         }
@@ -270,11 +267,9 @@ int main(int argc, char *argv[]) {
     FILE *f = fopen(csv_path, "r");
     if (!f) { printf(C_RED "Error: Could not open file %s\n" C_RESET, csv_path); return 1; }
 
-    // 1. Read Header
     char line_buf[4096];
     if (!fgets(line_buf, sizeof(line_buf), f)) return 1;
     
-    // Remove BOM if present
     char *start = line_buf;
     if ((unsigned char)line_buf[0] == 0xEF && (unsigned char)line_buf[1] == 0xBB && (unsigned char)line_buf[2] == 0xBF) {
         start += 3;
@@ -284,13 +279,12 @@ int main(int argc, char *argv[]) {
     char *headers[20];
     int col_count = parse_csv_line(start, headers, 20);
     
-    // Map Columns
     int idx_name = get_col_index(headers, col_count, "name");
     int idx_url = get_col_index(headers, col_count, "url");
     int idx_user = get_col_index(headers, col_count, "username");
     int idx_pass = get_col_index(headers, col_count, "password");
     
-    if (idx_name == -1 && idx_url != -1) idx_name = idx_url; // Fallback
+    if (idx_name == -1 && idx_url != -1) idx_name = idx_url; 
     
     printf("Mapping: Site=[Col %d] User=[Col %d] Pass=[Col %d]\n", idx_name, idx_user, idx_pass);
     if (idx_name == -1 || idx_pass == -1) {
@@ -298,7 +292,6 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // 2. Parse Entries
     Entry *entries = NULL;
     int count = 0;
     
@@ -317,7 +310,6 @@ int main(int argc, char *argv[]) {
         if (idx_user < c && idx_user != -1) clean_csv_field(e->user, cols[idx_user], 63);
         if (idx_pass < c) clean_csv_field(e->pass, cols[idx_pass], 127);
         
-        // Basic filter for empty rows
         if (strlen(e->pass) > 0) {
             printf("Importing: %-20s | %s\n", e->site, e->user);
             count++;
@@ -326,7 +318,6 @@ int main(int argc, char *argv[]) {
     fclose(f);
     printf(C_GREEN "\nParsed %d entries successfully.\n" C_RESET, count);
 
-    // 3. Encrypt & Save
     char master[128];
     printf("\nSet Master Password for New Vault: ");
     
@@ -339,7 +330,6 @@ int main(int argc, char *argv[]) {
     }
     master[i] = 0; printf("\n");
 
-    // ENCRYPTION RITUAL
     uint8_t salt[SALT_LEN], nonce[NONCE_LEN], key[32], tag[TAG_LEN];
     get_random_bytes(salt, SALT_LEN);
     get_random_bytes(nonce, NONCE_LEN);
